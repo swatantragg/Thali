@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" → local dev; musl/openssl-3 → node:20-alpine (Docker) runtime
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -30,9 +32,23 @@ enum Meal {
 
 // ─── Models ───────────────────────────────────────────────────────────────
 
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String?  @map("password_hash")          // null for Google-only accounts
+  googleSub    String?  @unique @map("google_sub")      // Google subject id, null for password accounts
+  name         String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  profile Profile?
+
+  @@map("users")
+}
+
 model Profile {
-  // id == Supabase / auth user UUID — set by the caller, not auto-generated
+  // id == User.id (1:1) — set during onboarding, not auto-generated
   id            String   @id @db.Uuid
+  user          User     @relation(fields: [id], references: [id], onDelete: Cascade)
   name          String?
   sex           Sex      @default(male)
   age           Int

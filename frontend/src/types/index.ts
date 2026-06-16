@@ -52,4 +52,13 @@ export interface DaySummary {
   fibre: number;
 }
 
+export interface WeightEntry {
+  id: number;
+  date: string;        // YYYY-MM-DD
+  weightKg: number;
+}
+
 export type TabId = 'today' | 'week' | 'month' | 'profile';
+
+// Month-view range selector
+export type MonthRange = 'month' | '3m' | '6m' | 'year' | 'all';

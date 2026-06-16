@@ -1,5 +1,5 @@
-import AppShell from '@/components/layout/AppShell';
+import AppRoot from '@/components/AppRoot';
 
 export default function Page() {
-  return <AppShell />;
+  return <AppRoot />;
 }

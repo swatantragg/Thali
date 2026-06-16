@@ -1,3 +1,4 @@
+
 # ── Stage 1: install deps ────────────────────────────────────────────────
 FROM node:20-alpine AS deps
 WORKDIR /app
@@ -14,6 +15,11 @@ COPY . .
 # Passed as --build-arg in docker-compose so the rewrite points to the backend service.
 ARG API_URL=http://backend:5000
 ENV API_URL=$API_URL
+
+# NEXT_PUBLIC_* must be present at BUILD time to be inlined into the browser bundle.
+# Required for the Google sign-in button. Leave empty to disable Google login.
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
 RUN npm run build
 

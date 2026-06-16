@@ -4,12 +4,12 @@
   "description": "Track Indian food calories and macros",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#10b981",
+  "background_color": "#EFE3C2",
+  "theme_color": "#3E7B27",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon.svg",
+      "src": "/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

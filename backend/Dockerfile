@@ -18,7 +18,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apk add --no-cache wget \
+# openssl → required by the Prisma query engine (libssl) at runtime
+RUN apk add --no-cache wget openssl \
  && addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 appuser
 

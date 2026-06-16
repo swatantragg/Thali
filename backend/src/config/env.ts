@@ -9,8 +9,12 @@ const schema = z.object({
   JWT_EXPIRES_IN:      z.string().default('7d'),
   DEV_USER_ID:         z.string().optional(),
   CLIENT_URL:          z.string().default('http://localhost:3000'),
-  NUTRITION_API_URL:   z.string().min(1),
-  NUTRITION_API_KEY:   z.string().min(1),
+  GOOGLE_CLIENT_ID:    z.string().optional(),   // required only for Google sign-in
+  // USDA FoodData Central key (primary food source). Falls back to DEMO_KEY.
+  FDC_API_KEY:         z.string().optional(),
+  // Legacy / unused — food search now uses USDA + Open Food Facts
+  NUTRITION_API_URL:   z.string().optional(),
+  NUTRITION_API_KEY:   z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -2,20 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme tokens (brand palette: #EFE3C2 #85A947 #3E7B27 #123524) ────────── */
+:root {
+  --app:           #EFE3C2;   /* cream page */
+  --surface:       #FCFAF3;   /* warm near-white cards */
+  --surface-2:     #F1E7CD;   /* inputs / soft tiles */
+  --line:          #DAC99E;   /* borders */
+  --ink:           #123524;   /* forest text */
+  --muted:         #5E6B49;   /* olive-gray secondary text */
+  --primary:       #3E7B27;   /* fern — buttons / active */
+  --primary-hover: #336420;
+  --primary-fg:    #FFFFFF;
+  --accent:        #85A947;   /* sage */
+  --accent-soft:   #E4ECCF;   /* light sage tint (active bg) */
+  --danger:        #C0392B;
+}
+
+.dark {
+  --app:           #0E2A1B;   /* deep forest page */
+  --surface:       #123524;   /* forest cards */
+  --surface-2:     #1C4430;   /* inputs / hover */
+  --line:          #2C5238;
+  --ink:           #EFE3C2;   /* cream text */
+  --muted:         #A9B98C;   /* light olive */
+  --primary:       #85A947;   /* sage reads better on dark */
+  --primary-hover: #98BB5A;
+  --primary-fg:    #0E2A1B;   /* dark text on sage button */
+  --accent:        #85A947;
+  --accent-soft:   #1E3A23;   /* deep sage tint */
+  --danger:        #E06A5C;
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  background: var(--app);
+  color: var(--ink);
+  @apply font-sans antialiased;
   overscroll-behavior-y: none;
 }
 
 /* Thin scrollbars */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9999px; }
+
+/* Themed <select> option list (native popup) */
+select option {
+  background-color: var(--surface);
+  color: var(--ink);
+}
+select option:checked {
+  background-color: var(--accent-soft);
+  color: var(--primary);
+}
 
 /* Remove number input arrows */
 input[type='number']::-webkit-inner-spin-button,

@@ -1,4 +1,11 @@
-version: '3.8'
+# Conservative MTU for container egress (safe default for VPN/WSL/cloud hosts).
+# Note: the USDA reachability fix is forcing IPv4 in the app (see config/http.ts),
+# not this value.
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: '1400'
 
 services:
   # ── Backend (Express + Prisma → Neon) ──────────────────────────────────
@@ -12,6 +19,7 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: production
+      # JWT_SECRET and GOOGLE_CLIENT_ID come from ./backend/.env (env_file above)
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:5000/health || exit 1']
@@ -27,6 +35,9 @@ services:
       dockerfile: Dockerfile
       args:
         API_URL: http://backend:5000
+        # Must match backend GOOGLE_CLIENT_ID. Set GOOGLE_CLIENT_ID in your shell
+        # (export GOOGLE_CLIENT_ID=…) before `docker compose up --build`.
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
       - '3000:3000'
     environment:

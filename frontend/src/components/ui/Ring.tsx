@@ -15,7 +15,7 @@ export default function Ring({ value, max }: RingProps) {
   return (
     <div className="relative w-44 h-44">
       <svg viewBox="0 0 180 180" className="w-44 h-44 -rotate-90">
-        <circle cx="90" cy="90" r={r} fill="none" stroke="#e2e8f0" strokeWidth="14" />
+        <circle cx="90" cy="90" r={r} fill="none" style={{ stroke: 'var(--surface-2)' }} strokeWidth="14" />
         <circle
           cx="90"
           cy="90"
@@ -30,8 +30,8 @@ export default function Ring({ value, max }: RingProps) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold text-slate-800 tabular-nums">{value}</span>
-        <span className="text-xs text-slate-400">of {max} kcal</span>
+        <span className="text-3xl font-bold text-ink tabular-nums">{value}</span>
+        <span className="text-xs text-ink-muted">of {max} kcal</span>
         <span className="mt-1 text-xs font-semibold" style={{ color }}>
           {over ? `${value - max} over` : `${max - value} left`}
         </span>

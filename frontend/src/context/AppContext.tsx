@@ -1,18 +1,18 @@
 'use client';
 
 import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
-import { LogEntry, Profile, Targets, TabId } from '@/types';
+import { LogEntry, Profile, Targets, TabId, WeightEntry } from '@/types';
 import { computeTargets } from '@/lib/nutrition';
 import { toISO } from '@/lib/dates';
-
-// All fetch calls use Next.js rewrite  /api/* → backend /api/*
-// See next.config.js rewrites — no hardcoded port in the browser bundle
-const BASE = '/api';
+import { api } from '@/lib/api';
+import { useAuth } from './AuthContext';
 
 interface AppContextValue {
   logs: LogEntry[];
   profile: Profile;
   targets: Targets;
+  weights: WeightEntry[];
+  latestWeight: number | null;
   tab: TabId;
   selectedDate: string;
   loading: boolean;
@@ -22,6 +22,7 @@ interface AppContextValue {
   setSelectedDate: (d: string) => void;
   addLog: (meal: string, foodId: number, qty: number) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
+  addWeight: (weightKg: number, date?: string) => Promise<void>;
   refreshLogs: () => Promise<void>;
 }
 
@@ -37,8 +38,10 @@ const DEFAULT_PROFILE: Profile = {
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const { user, markProfileComplete } = useAuth();
   const [logs, setLogs]         = useState<LogEntry[]>([]);
   const [profile, setProfileState] = useState<Profile>(DEFAULT_PROFILE);
+  const [weights, setWeights]   = useState<WeightEntry[]>([]);
   const [tab, setTab]           = useState<TabId>('today');
   const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
   const [loading, setLoading]   = useState(false);
@@ -49,7 +52,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${BASE}/logs`);
+      const res = await api('/logs');
       if (res.ok) {
         const data: LogEntry[] = await res.json();
         setLogs(data.map(l => ({ ...l, id: String(l.id) })));
@@ -63,11 +66,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ── Initial load ──────────────────────────────────────────────────────
+  // ── Fetch weight logs ───────────────────────────────────────────────────
+  const refreshWeights = useCallback(async () => {
+    try {
+      const res = await api('/weight');
+      if (res.ok) {
+        const data: WeightEntry[] = await res.json();
+        setWeights(data.map(w => ({ ...w, weightKg: Number(w.weightKg) })));
+      }
+    } catch {
+      // ignore — weights are optional
+    }
+  }, []);
+
+  // ── Load on auth change ─────────────────────────────────────────────────
   useEffect(() => {
+    if (!user) {
+      setLogs([]);
+      setWeights([]);
+      setProfileState(DEFAULT_PROFILE);
+      return;
+    }
     (async () => {
       try {
-        const res = await fetch(`${BASE}/profile`);
+        const res = await api('/profile');
         if (res.ok) {
           const data = await res.json();
           setProfileState({
@@ -85,29 +107,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     refreshLogs();
-  }, [refreshLogs]);
+    refreshWeights();
+  }, [user, refreshLogs, refreshWeights]);
 
   const targets = useMemo(() => computeTargets(profile), [profile]);
+
+  // Latest logged weight (weights are stored ascending by date)
+  const latestWeight = useMemo(
+    () => (weights.length ? weights[weights.length - 1].weightKg : null),
+    [weights]
+  );
+
+  // Auto-fill the profile's weight from the most recent weigh-in (local only).
+  useEffect(() => {
+    if (latestWeight != null) {
+      setProfileState(p => (p.weightKg === latestWeight ? p : { ...p, weightKg: latestWeight }));
+    }
+  }, [latestWeight]);
 
   // ── Profile ───────────────────────────────────────────────────────────
   const setProfile = useCallback(async (p: Profile) => {
     setProfileState(p);
-    try {
-      await fetch(`${BASE}/profile`, {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(p),
-      });
-    } catch {
-      // local state already updated; sync later
+    const res = await api('/profile', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(p),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save profile');
     }
-  }, []);
+    markProfileComplete();
+  }, [markProfileComplete]);
 
   // ── Add log ───────────────────────────────────────────────────────────
   const addLog = useCallback(
     async (meal: string, foodId: number, qty: number) => {
       try {
-        const res = await fetch(`${BASE}/logs`, {
+        const res = await api('/logs', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ foodId, meal, date: selectedDate, quantity: qty }),
@@ -129,18 +166,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const deleteLog = useCallback(async (id: string) => {
     setLogs(prev => prev.filter(l => l.id !== id));   // optimistic
     try {
-      await fetch(`${BASE}/logs/${id}`, { method: 'DELETE' });
+      await api(`/logs/${id}`, { method: 'DELETE' });
     } catch {
-      // revert by refreshing
       refreshLogs();
     }
   }, [refreshLogs]);
 
+  // ── Add / update weight ─────────────────────────────────────────────────
+  // Persists a weight log AND syncs profile.weightKg (so targets recompute
+  // and the profile auto-fills the latest weight).
+  const addWeight = useCallback(async (weightKg: number, date?: string) => {
+    const logDate = date ?? toISO(new Date());
+    const res = await api('/weight', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ date: logDate, weightKg }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save weight');
+    }
+    const saved: WeightEntry = await res.json();
+    setWeights(prev => {
+      const next = prev.filter(w => w.date !== saved.date);
+      next.push({ ...saved, weightKg: Number(saved.weightKg) });
+      next.sort((a, b) => a.date.localeCompare(b.date));
+      return next;
+    });
+    // keep profile target weight in sync with the latest entry
+    await setProfile({ ...profile, weightKg });
+  }, [profile, setProfile]);
+
   return (
     <AppContext.Provider
       value={{
-        logs, profile, targets, tab, selectedDate, loading, error,
-        setProfile, setTab, setSelectedDate, addLog, deleteLog, refreshLogs,
+        logs, profile, targets, weights, latestWeight, tab, selectedDate, loading, error,
+        setProfile, setTab, setSelectedDate, addLog, deleteLog, addWeight, refreshLogs,
       }}
     >
       {children}

@@ -27,15 +27,15 @@ export default function TodayView() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => go(-1)}
-          className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors"
+          className="p-2 rounded-xl hover:bg-surface-2 text-ink-muted transition-colors"
         >
           <ChevronLeft size={20} />
         </button>
-        <span className="text-sm font-semibold text-slate-700">{formatDay(selectedDate)}</span>
+        <span className="text-sm font-semibold text-ink">{formatDay(selectedDate)}</span>
         <button
           disabled={isToday}
           onClick={() => go(1)}
-          className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 disabled:opacity-30 transition-colors"
+          className="p-2 rounded-xl hover:bg-surface-2 text-ink-muted disabled:opacity-30 transition-colors"
         >
           <ChevronRight size={20} />
         </button>
