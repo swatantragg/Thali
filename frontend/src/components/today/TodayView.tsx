@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import MealSection from './MealSection';
 
 export default function TodayView() {
-  const { logs, targets, selectedDate, setSelectedDate, addLog, deleteLog } = useApp();
+  const { logs, targets, selectedDate, setSelectedDate, addLog, updateLog, deleteLog } = useApp();
   const today = toISO(new Date());
   const t = sumDay(logs, selectedDate);
   const isToday = selectedDate === today;
@@ -57,6 +57,7 @@ export default function TodayView() {
           meal={meal}
           items={dayItems(meal)}
           onAdd={(foodId: number, qty: number) => addLog(meal, foodId, qty)}
+          onUpdate={updateLog}
           onDelete={deleteLog}
         />
       ))}

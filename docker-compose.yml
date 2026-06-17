@@ -35,9 +35,10 @@ services:
       dockerfile: Dockerfile
       args:
         API_URL: http://backend:5000
-        # Must match backend GOOGLE_CLIENT_ID. Set GOOGLE_CLIENT_ID in your shell
-        # (export GOOGLE_CLIENT_ID=…) before `docker compose up --build`.
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        # Public OAuth client id (safe to expose). Inlined at BUILD time, so it
+        # must be present when the image is built. Override by exporting
+        # GOOGLE_CLIENT_ID before `docker compose up --build`.
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-935073061730-eokr9e7bnhfolh9t35n6mm89kb4fmqrb.apps.googleusercontent.com}
     ports:
       - '3000:3000'
     environment:

@@ -21,6 +21,7 @@ interface AppContextValue {
   setTab: (t: TabId) => void;
   setSelectedDate: (d: string) => void;
   addLog: (meal: string, foodId: number, qty: number) => Promise<void>;
+  updateLog: (id: string, qty: number) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
   addWeight: (weightKg: number, date?: string) => Promise<void>;
   refreshLogs: () => Promise<void>;
@@ -162,6 +163,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [selectedDate]
   );
 
+  // ── Update log (edit quantity → backend recomputes macros) ──────────────
+  const updateLog = useCallback(async (id: string, qty: number) => {
+    try {
+      const res = await api(`/logs/${id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ quantity: qty }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setLogs(prev => prev.map(l => (l.id === id ? { ...saved, id: String(saved.id) } : l)));
+      } else {
+        setError(`Could not update entry (${res.status})`);
+      }
+    } catch {
+      setError('Update failed — is the backend running?');
+    }
+  }, []);
+
   // ── Delete log ────────────────────────────────────────────────────────
   const deleteLog = useCallback(async (id: string) => {
     setLogs(prev => prev.filter(l => l.id !== id));   // optimistic
@@ -201,7 +221,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         logs, profile, targets, weights, latestWeight, tab, selectedDate, loading, error,
-        setProfile, setTab, setSelectedDate, addLog, deleteLog, addWeight, refreshLogs,
+        setProfile, setTab, setSelectedDate, addLog, updateLog, deleteLog, addWeight, refreshLogs,
       }}
     >
       {children}

@@ -52,7 +52,7 @@ export async function register(email: string, password: string, name?: string): 
   const existing = await prisma.user.findUnique({ where: { email: normalized } });
   if (existing) throw new AuthError(409, 'An account with this email already exists');
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12);
   const user = await prisma.user.create({
     data: { email: normalized, passwordHash, name: name?.trim() || null },
   });

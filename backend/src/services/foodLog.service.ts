@@ -78,6 +78,39 @@ export async function addFoodLog(
   return toEntry(row);
 }
 
+// ─── update_food_log (edit quantity → recompute macros) ─────────────────────
+
+export async function updateFoodLog(
+  logId: bigint,
+  userId: string,
+  quantityG: number
+): Promise<LogEntry> {
+  // Ownership-scoped fetch; pulls the food so we can recompute from per-100g.
+  const existing = await prisma.foodLog.findFirst({
+    where: { id: logId, userId },
+    include: { food: true },
+  });
+  if (!existing) throw new Error('Log not found');
+
+  const food = existing.food;
+  const k = quantityG / 100;
+
+  const row = await prisma.foodLog.update({
+    where: { id: logId },
+    data: {
+      quantityG,
+      calories: r2(Number(food.caloriesPer100g) * k),
+      protein:  r2(Number(food.protein) * k),
+      carbs:    r2(Number(food.carbs) * k),
+      fat:      r2(Number(food.fat) * k),
+      fibre:    r2(Number(food.fibre) * k),
+    },
+    include: { food: { select: { name: true } } },
+  });
+
+  return toEntry(row);
+}
+
 // ─── delete_food_log ──────────────────────────────────────────────────────
 
 export async function deleteFoodLog(logId: bigint, userId: string) {

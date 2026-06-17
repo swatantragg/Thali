@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Cell,
 } from 'recharts';
@@ -15,14 +15,19 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function WeekView() {
   const { logs, targets } = useApp();
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
   const data = useMemo(() => {
     const base = new Date();
     return Array.from({ length: 7 }, (_, i) => {
       const d = addDays(base, i - 6);
-      return { name: DAY_NAMES[d.getDay()], ...sumDay(logs, toISO(d)) };
+      return { name: DAY_NAMES[d.getDay()], date: toISO(d), ...sumDay(logs, toISO(d)) };
     });
   }, [logs]);
+
+  // Toggle a bar: select it, or deselect if it's already selected.
+  const toggle = (i: number) => setSelectedIdx(cur => (cur === i ? null : i));
+  const sel = selectedIdx != null ? data[selectedIdx] : null;
 
   const logged = data.filter(d => d.calories > 0);
   const avgCal = logged.length
@@ -49,14 +54,22 @@ export default function WeekView() {
                 contentStyle={{ borderRadius: 12, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 12 }}
               />
               <ReferenceLine y={targets.cal} stroke={COLORS.cal} strokeDasharray="4 4" />
-              <Bar dataKey="calories" radius={[6, 6, 0, 0]}>
-                {data.map((d, i) => (
-                  <Cell
-                    key={i}
-                    fill={d.calories > targets.cal ? COLORS.over : COLORS.cal}
-                    fillOpacity={d.calories ? 0.85 : 0.2}
-                  />
-                ))}
+              <Bar
+                dataKey="calories"
+                radius={[6, 6, 0, 0]}
+                onClick={(_: unknown, index: number) => toggle(index)}
+                style={{ cursor: 'pointer' }}
+              >
+                {data.map((d, i) => {
+                  const dim = selectedIdx != null && selectedIdx !== i;
+                  return (
+                    <Cell
+                      key={i}
+                      fill={d.calories > targets.cal ? COLORS.over : COLORS.cal}
+                      fillOpacity={d.calories ? (dim ? 0.3 : 0.9) : 0.2}
+                    />
+                  );
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -70,22 +83,41 @@ export default function WeekView() {
       </div>
 
       <Card className="p-4">
-        <div className="text-xs font-medium text-ink-muted mb-3">Macro breakdown (avg)</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-medium text-ink-muted">
+            {sel ? `Macro breakdown — ${sel.name}` : 'Macro breakdown (avg)'}
+          </div>
+          {sel ? (
+            <button onClick={() => setSelectedIdx(null)} className="text-[11px] font-medium text-primary hover:text-primary-hover">
+              Show average
+            </button>
+          ) : (
+            <span className="text-[11px] text-ink-muted">tap a bar for a day</span>
+          )}
+        </div>
         <div className="space-y-3">
-          {logged.length > 0 ? (
+          {sel || logged.length > 0 ? (
             <>
+              {sel && (
+                <div className="text-xs text-ink-muted tabular-nums -mt-1">
+                  {sel.calories > 0 ? `${Math.round(sel.calories)} kcal logged` : 'No food logged this day'}
+                </div>
+              )}
               {[
                 { label: 'Protein', key: 'protein' as const, color: COLORS.protein, target: targets.protein },
                 { label: 'Carbs',   key: 'carbs'   as const, color: COLORS.carbs,   target: targets.carbs },
                 { label: 'Fat',     key: 'fat'      as const, color: COLORS.fat,     target: targets.fat },
+                { label: 'Fibre',   key: 'fibre'   as const, color: COLORS.fibre,   target: targets.fibre },
               ].map(({ label, key, color, target }) => {
-                const avg = Math.round(logged.reduce((s, d) => s + d[key], 0) / logged.length);
-                const pct = Math.min(avg / target, 1) * 100;
+                const value = sel
+                  ? Math.round(sel[key])
+                  : Math.round(logged.reduce((s, d) => s + d[key], 0) / logged.length);
+                const pct = Math.min(value / target, 1) * 100;
                 return (
                   <div key={label}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="font-medium text-ink-muted">{label}</span>
-                      <span className="text-ink-muted tabular-nums">{avg}g / {target}g</span>
+                      <span className="text-ink-muted tabular-nums">{value}g / {target}g</span>
                     </div>
                     <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Loader2, Mail, Lock, User } from 'lucide-react';
+import { Loader2, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import GoogleButton from './GoogleButton';
@@ -10,24 +10,55 @@ type Mode = 'login' | 'signup';
 
 const inputCls =
   'w-full pl-10 pr-3 py-2.5 rounded-xl border border-line bg-surface-2 text-sm text-ink outline-none focus:border-primary transition-colors';
+const pwInputCls =
+  'w-full pl-10 pr-10 py-2.5 rounded-xl border border-line bg-surface-2 text-sm text-ink outline-none focus:border-primary transition-colors';
+
+/** Mirror of the backend policy so users get instant, specific feedback. */
+function passwordPolicyError(pw: string): string | null {
+  if (pw.length < 8)        return 'Password must be at least 8 characters';
+  if (!/[a-z]/.test(pw))    return 'Password must contain a lowercase letter';
+  if (!/[A-Z]/.test(pw))    return 'Password must contain an uppercase letter';
+  if (!/[0-9]/.test(pw))    return 'Password must contain a number';
+  if (!/[^A-Za-z0-9]/.test(pw)) return 'Password must contain a symbol';
+  return null;
+}
 
 export default function LoginView() {
   const { login, register, googleLogin } = useAuth();
-  const [mode, setMode]         = useState<Mode>('login');
-  const [name, setName]         = useState('');
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [mode, setMode]               = useState<Mode>('login');
+  const [name, setName]               = useState('');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [confirm, setConfirm]         = useState('');
+  const [showPw, setShowPw]           = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [busy, setBusy]               = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setError(null);
+    setConfirm('');
+    setShowPw(false);
+    setShowConfirm(false);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+
+    if (mode === 'signup') {
+      const pwErr = passwordPolicyError(password);
+      if (pwErr) { setError(pwErr); return; }
+      if (password !== confirm) { setError('Passwords do not match'); return; }
+    }
+
+    setBusy(true);
     try {
       if (mode === 'login') await login(email, password);
       else await register(email, password, name || undefined);
     } catch (err) {
+      // Backend returns 409 here if the email is already registered.
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setBusy(false);
@@ -69,7 +100,7 @@ export default function LoginView() {
             {(['login', 'signup'] as Mode[]).map(m => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setError(null); }}
+                onClick={() => switchMode(m)}
                 className={`py-2 text-sm font-semibold rounded-lg transition-colors ${
                   mode === m
                     ? 'bg-surface text-primary shadow-sm'
@@ -98,14 +129,48 @@ export default function LoginView() {
                 onChange={e => setEmail(e.target.value)} className={inputCls}
               />
             </div>
+
+            {/* Password + eye */}
             <div className="relative">
               <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
-                type="password" placeholder="Password (min 8 chars)" value={password} required minLength={8}
+                type={showPw ? 'text' : 'password'}
+                placeholder={mode === 'signup' ? 'Password (min 8 chars)' : 'Password'}
+                value={password} required minLength={8}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                onChange={e => setPassword(e.target.value)} className={inputCls}
+                onChange={e => setPassword(e.target.value)} className={pwInputCls}
               />
+              <button
+                type="button"
+                onClick={() => setShowPw(v => !v)}
+                aria-label={showPw ? 'Hide password' : 'Show password'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink transition-colors"
+              >
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
+
+            {/* Confirm password (signup) + eye */}
+            {mode === 'signup' && (
+              <div className="relative">
+                <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+                <input
+                  type={showConfirm ? 'text' : 'password'}
+                  placeholder="Confirm password"
+                  value={confirm} required minLength={8}
+                  autoComplete="new-password"
+                  onChange={e => setConfirm(e.target.value)} className={pwInputCls}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(v => !v)}
+                  aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink transition-colors"
+                >
+                  {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            )}
 
             {error && <p className="text-xs text-danger">{error}</p>}
 

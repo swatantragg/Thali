@@ -1,7 +1,15 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api, postJSON, getToken, setToken, clearToken } from '@/lib/api';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import {
+  api,
+  postJSON,
+  getToken,
+  setToken,
+  clearAllClientData,
+  isSessionExpired,
+  sessionTimeLeftMs,
+} from '@/lib/api';
 
 export interface AuthUser {
   id: string;
@@ -30,26 +38,67 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
+  const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // End the session locally: wipe token + all cached data, drop the user.
+  const endSession = useCallback(() => {
+    if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    void clearAllClientData();
+    setUser(null);
+  }, []);
+
+  // Schedule an automatic logout exactly when the 30-day window elapses, so an
+  // open tab is signed out without waiting for the next request.
+  const scheduleAutoLogout = useCallback(() => {
+    if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    const left = sessionTimeLeftMs();
+    if (left <= 0) return;
+    // setTimeout caps at ~24.8 days; clamp and re-arm on the next check if needed.
+    const delay = Math.min(left, 2_000_000_000);
+    expiryTimer.current = setTimeout(() => {
+      if (isSessionExpired()) endSession();
+      else scheduleAutoLogout();
+    }, delay);
+  }, [endSession]);
 
   // Validate any stored token on mount.
   useEffect(() => {
     (async () => {
-      if (!getToken()) { setReady(true); return; }
+      if (!getToken()) { setReady(true); return; }   // getToken() self-expires
       try {
         const res = await api('/auth/me');
-        if (res.ok) setUser(await res.json());
-        else clearToken();
+        if (res.ok) {
+          setUser(await res.json());
+          scheduleAutoLogout();
+        } else {
+          endSession();
+        }
       } catch {
-        clearToken();
+        endSession();
       } finally {
         setReady(true);
       }
     })();
-  }, []);
+    return () => { if (expiryTimer.current) clearTimeout(expiryTimer.current); };
+  }, [endSession, scheduleAutoLogout]);
+
+  // Re-check expiry whenever the tab regains focus (covers long-backgrounded PWAs).
+  useEffect(() => {
+    const onVisible = () => {
+      if (user && isSessionExpired()) endSession();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [user, endSession]);
 
   const handleResult = (r: AuthResult) => {
     setToken(r.token);
     setUser(r.user);
+    scheduleAutoLogout();
   };
 
   const login = useCallback(async (email: string, password: string) => {
@@ -65,9 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    clearToken();
-    setUser(null);
-  }, []);
+    endSession();
+  }, [endSession]);
 
   const markProfileComplete = useCallback(() => {
     setUser(u => (u ? { ...u, hasProfile: true } : u));
