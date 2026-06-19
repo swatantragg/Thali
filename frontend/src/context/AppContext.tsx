@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
-import { LogEntry, Profile, Targets, TabId, WeightEntry } from '@/types';
+import { LogEntry, Profile, Targets, TabId, WeightEntry, FastEntry, CustomFoodInput, FoodResult } from '@/types';
 import { computeTargets } from '@/lib/nutrition';
 import { toISO } from '@/lib/dates';
 import { api } from '@/lib/api';
@@ -12,6 +12,7 @@ interface AppContextValue {
   profile: Profile;
   targets: Targets;
   weights: WeightEntry[];
+  fasts: FastEntry[];
   latestWeight: number | null;
   tab: TabId;
   selectedDate: string;
@@ -24,6 +25,9 @@ interface AppContextValue {
   updateLog: (id: string, qty: number) => Promise<void>;
   deleteLog: (id: string) => Promise<void>;
   addWeight: (weightKg: number, date?: string) => Promise<void>;
+  addFast: (date: string, meal: string) => Promise<void>;
+  removeFast: (date: string, meal: string) => Promise<void>;
+  addCustomFood: (input: CustomFoodInput) => Promise<FoodResult>;
   refreshLogs: () => Promise<void>;
 }
 
@@ -43,6 +47,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [logs, setLogs]         = useState<LogEntry[]>([]);
   const [profile, setProfileState] = useState<Profile>(DEFAULT_PROFILE);
   const [weights, setWeights]   = useState<WeightEntry[]>([]);
+  const [fasts, setFasts]       = useState<FastEntry[]>([]);
   const [tab, setTab]           = useState<TabId>('today');
   const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
   const [loading, setLoading]   = useState(false);
@@ -80,11 +85,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ── Fetch fast (skipped-meal) logs ──────────────────────────────────────
+  const refreshFasts = useCallback(async () => {
+    try {
+      const res = await api('/fasts');
+      if (res.ok) setFasts(await res.json());
+    } catch {
+      // ignore — fasts are optional
+    }
+  }, []);
+
   // ── Load on auth change ─────────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       setLogs([]);
       setWeights([]);
+      setFasts([]);
       setProfileState(DEFAULT_PROFILE);
       return;
     }
@@ -109,7 +125,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })();
     refreshLogs();
     refreshWeights();
-  }, [user, refreshLogs, refreshWeights]);
+    refreshFasts();
+  }, [user, refreshLogs, refreshWeights, refreshFasts]);
 
   const targets = useMemo(() => computeTargets(profile), [profile]);
 
@@ -217,11 +234,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await setProfile({ ...profile, weightKg });
   }, [profile, setProfile]);
 
+  // ── Fasting (mark/clear a skipped meal) ─────────────────────────────────
+  const addFast = useCallback(async (date: string, meal: string) => {
+    setFasts(prev => (prev.some(f => f.date === date && f.meal === meal) ? prev : [...prev, { date, meal }]));
+    try {
+      const res = await api('/fasts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ date, meal }),
+      });
+      if (!res.ok) refreshFasts();
+    } catch {
+      refreshFasts();
+    }
+  }, [refreshFasts]);
+
+  const removeFast = useCallback(async (date: string, meal: string) => {
+    setFasts(prev => prev.filter(f => !(f.date === date && f.meal === meal)));
+    try {
+      const res = await api('/fasts', {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ date, meal }),
+      });
+      if (!res.ok) refreshFasts();
+    } catch {
+      refreshFasts();
+    }
+  }, [refreshFasts]);
+
+  // ── Custom "Others" food → persisted, then reusable in search ───────────
+  const addCustomFood = useCallback(async (input: CustomFoodInput): Promise<FoodResult> => {
+    const res = await api('/foods', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save food');
+    }
+    return res.json();
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
-        logs, profile, targets, weights, latestWeight, tab, selectedDate, loading, error,
-        setProfile, setTab, setSelectedDate, addLog, updateLog, deleteLog, addWeight, refreshLogs,
+        logs, profile, targets, weights, fasts, latestWeight, tab, selectedDate, loading, error,
+        setProfile, setTab, setSelectedDate, addLog, updateLog, deleteLog, addWeight,
+        addFast, removeFast, addCustomFood, refreshLogs,
       }}
     >
       {children}

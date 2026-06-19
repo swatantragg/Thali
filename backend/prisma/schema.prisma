@@ -65,6 +65,7 @@ model Profile {
 
   foodLogs   FoodLog[]
   weightLogs WeightLog[]
+  fastLogs   FastLog[]
 
   @@map("profiles")
 }
@@ -77,7 +78,7 @@ model Food {
   carbs           Decimal @db.Decimal(6, 2)
   fat             Decimal @db.Decimal(6, 2)
   fibre           Decimal @db.Decimal(6, 2)
-  source          String  @default("INDB")
+  source          String  @default("INDB")   // "usda" | "openfoodfacts" | "custom" | …
 
   foodLogs FoodLog[]
 
@@ -103,6 +104,20 @@ model FoodLog {
   food    Food    @relation(fields: [foodId],  references: [id], onDelete: Restrict)
 
   @@map("food_logs")
+}
+
+model FastLog {
+  // A meal the user deliberately skipped (fasting) — counts as "covered" for
+  // consistency so a planned skip doesn't break the streak.
+  id      BigInt   @id @default(autoincrement())
+  userId  String   @map("user_id") @db.Uuid
+  logDate DateTime @map("log_date") @db.Date
+  meal    Meal
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, logDate, meal])
+  @@map("fast_logs")
 }
 
 model WeightLog {

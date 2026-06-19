@@ -91,7 +91,10 @@ export default function ProfileView() {
   };
 
   // While editing, project the targets the draft would produce.
+  const p = editing ? draft : profile;
   const shownTargets = editing ? computeTargets(draft) : targets;
+  const goalAdj = p.goal === 'cut' ? -450 : p.goal === 'bulk' ? 350 : 0;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
 
   return (
     <div className="space-y-4">
@@ -257,9 +260,86 @@ export default function ProfileView() {
         </div>
       </Card>
 
-      <p className="text-xs text-ink-muted px-1 pb-2">
-        Targets computed via Mifflin-St Jeor equation adjusted for activity and goal.
-      </p>
+      {/* How the numbers are calculated — full transparency */}
+      <Card className="p-4">
+        <div className="text-xs font-medium text-ink-muted mb-1">How your targets are calculated</div>
+        <p className="text-[11px] text-ink-muted mb-3">
+          Using your current stats ({p.sex}, {p.age}y, {p.heightCm}cm, {p.weightKg}kg,
+          {' '}{GOAL_LABELS[p.goal].toLowerCase()}).
+        </p>
+
+        <div className="space-y-3">
+          <FormulaRow
+            label="1 · BMR (Mifflin-St Jeor)"
+            formula={
+              p.sex === 'male'
+                ? `10 × ${p.weightKg} + 6.25 × ${p.heightCm} − 5 × ${p.age} + 5`
+                : `10 × ${p.weightKg} + 6.25 × ${p.heightCm} − 5 × ${p.age} − 161`
+            }
+            result={`${shownTargets.bmr} kcal`}
+          />
+          <FormulaRow
+            label="2 · TDEE (× activity)"
+            formula={`${shownTargets.bmr} × ${p.activityLevel}`}
+            result={`${shownTargets.tdee} kcal`}
+          />
+          <FormulaRow
+            label={`3 · Calorie target (${p.goal})`}
+            formula={`${shownTargets.tdee} ${goalAdj === 0 ? '± 0' : goalAdj > 0 ? `+ ${goalAdj}` : `− ${-goalAdj}`}`}
+            result={`${shownTargets.cal} kcal`}
+            note={p.goal === 'cut' ? '−450 deficit to lose fat' : p.goal === 'bulk' ? '+350 surplus to gain' : 'maintenance, no adjustment'}
+          />
+          <div className="border-t border-line pt-3 space-y-3">
+            <FormulaRow
+              label="Protein"
+              formula={`${p.weightKg} kg × 1.8 g`}
+              result={`${shownTargets.protein} g`}
+              accent={COLORS.protein}
+            />
+            <FormulaRow
+              label="Fat"
+              formula={`27% of ${shownTargets.cal} ÷ 9`}
+              result={`${shownTargets.fat} g`}
+              accent={COLORS.fat}
+            />
+            <FormulaRow
+              label="Carbs"
+              formula={`(${shownTargets.cal} − ${shownTargets.protein}×4 − ${shownTargets.fat}×9) ÷ 4`}
+              result={`${shownTargets.carbs} g`}
+              accent={COLORS.carbs}
+            />
+            <FormulaRow
+              label="Fibre"
+              formula="fixed daily recommendation"
+              result={`${shownTargets.fibre} g`}
+              accent={COLORS.fibre}
+            />
+          </div>
+        </div>
+
+        <p className="text-[11px] text-ink-muted mt-3">
+          {round1(shownTargets.protein * 4 / shownTargets.cal * 100)}% protein ·
+          {' '}{round1(shownTargets.carbs * 4 / shownTargets.cal * 100)}% carbs ·
+          {' '}{round1(shownTargets.fat * 9 / shownTargets.cal * 100)}% fat of total calories.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+function FormulaRow({
+  label, formula, result, note, accent,
+}: { label: string; formula: string; result: string; note?: string; accent?: string }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs font-medium text-ink">{label}</span>
+        <span className="text-sm font-bold tabular-nums shrink-0" style={accent ? { color: accent } : undefined}>
+          {result}
+        </span>
+      </div>
+      <div className="text-[11px] text-ink-muted font-mono tabular-nums mt-0.5">{formula}</div>
+      {note && <div className="text-[10px] text-ink-muted mt-0.5">{note}</div>}
     </div>
   );
 }

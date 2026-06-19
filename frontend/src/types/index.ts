@@ -58,6 +58,22 @@ export interface WeightEntry {
   weightKg: number;
 }
 
+// A meal the user deliberately skipped (fasting) — counts toward consistency.
+export interface FastEntry {
+  date: string;        // YYYY-MM-DD
+  meal: string;
+}
+
+// Payload for a user-created "Others" dish (values per 100g).
+export interface CustomFoodInput {
+  name: string;
+  caloriesPer100g: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fibre: number;
+}
+
 export type TabId = 'today' | 'week' | 'month' | 'profile';
 
 // Month-view range selector

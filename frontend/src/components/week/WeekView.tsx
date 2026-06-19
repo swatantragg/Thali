@@ -10,6 +10,7 @@ import { toISO, addDays } from '@/lib/dates';
 import { COLORS } from '@/lib/constants';
 import Card from '@/components/ui/Card';
 import StatCard from '@/components/ui/StatCard';
+import ConsistencyCard from './ConsistencyCard';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -81,6 +82,8 @@ export default function WeekView() {
         <StatCard label="Avg protein" value={`${avgPro}g`} sub={`target ${targets.protein}g`} color={COLORS.protein} />
         <StatCard label="On target" value={`${onTarget}/${logged.length}`} sub="days" color={COLORS.cal} />
       </div>
+
+      <ConsistencyCard />
 
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">

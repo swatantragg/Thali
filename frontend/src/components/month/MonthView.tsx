@@ -6,7 +6,7 @@ import {
   PieChart, Pie, Cell,
 } from 'recharts';
 import { useApp } from '@/context/AppContext';
-import { parseISO, toISO, addDays } from '@/lib/dates';
+import { parseISO, toISO } from '@/lib/dates';
 import { COLORS } from '@/lib/constants';
 import { MonthRange } from '@/types';
 import Card from '@/components/ui/Card';
@@ -122,24 +122,6 @@ export default function MonthView() {
     { name: 'Fibre',   value: avg.fibre,   color: COLORS.fibre },
   ];
 
-  // ── Consistency tracker (logged vs missed days across the range) ───────────
-  const consistency = useMemo(() => {
-    const days: { iso: string; logged: boolean }[] = [];
-    let cur = new Date(start);
-    while (toISO(cur) <= todayISO) {
-      const iso = toISO(cur);
-      days.push({ iso, logged: (dayMap.get(iso)?.calories ?? 0) > 0 });
-      cur = addDays(cur, 1);
-    }
-    const total = days.length;
-    const loggedCount = days.filter(d => d.logged).length;
-    let current = 0;
-    for (let i = days.length - 1; i >= 0; i--) { if (days[i].logged) current++; else break; }
-    let best = 0, run = 0;
-    for (const d of days) { run = d.logged ? run + 1 : 0; if (run > best) best = run; }
-    return { days, total, loggedCount, pct: total ? Math.round((loggedCount / total) * 100) : 0, current, best };
-  }, [dayMap, start, todayISO]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const tooltipStyle = { borderRadius: 12, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 12 };
 
   const stats: [string, number | string, string][] = [
@@ -185,45 +167,6 @@ export default function MonthView() {
               <Area type="monotone" dataKey="calories" stroke={COLORS.cal} fill={COLORS.cal} fillOpacity={0.14} strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
-      </Card>
-
-      {/* Consistency tracker */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs font-medium text-ink-muted">Consistency</div>
-          <div className="text-xs text-ink-muted tabular-nums">
-            {consistency.loggedCount}/{consistency.total} days · {consistency.pct}%
-          </div>
-        </div>
-
-        <div className="h-2 rounded-full bg-surface-2 overflow-hidden mb-4">
-          <div className="h-full rounded-full transition-all" style={{ width: `${consistency.pct}%`, backgroundColor: COLORS.cal }} />
-        </div>
-
-        <div className="flex gap-8 mb-4">
-          <div>
-            <div className="text-2xl font-bold text-ink tabular-nums leading-none" style={{ color: COLORS.cal }}>
-              {consistency.current}
-            </div>
-            <div className="text-[11px] text-ink-muted mt-1">Current streak {consistency.current === 1 ? 'day' : 'days'}</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-ink tabular-nums leading-none">{consistency.best}</div>
-            <div className="text-[11px] text-ink-muted mt-1">Best streak {consistency.best === 1 ? 'day' : 'days'}</div>
-          </div>
-        </div>
-
-        {/* Day dots — filled = logged */}
-        <div className="flex flex-wrap gap-1">
-          {consistency.days.map(d => (
-            <span
-              key={d.iso}
-              title={`${d.iso}${d.logged ? ' · logged' : ' · missed'}`}
-              className="w-2.5 h-2.5 rounded-sm"
-              style={{ backgroundColor: d.logged ? COLORS.cal : 'var(--surface-2)' }}
-            />
-          ))}
         </div>
       </Card>
 

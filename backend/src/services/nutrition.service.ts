@@ -148,40 +148,100 @@ async function fetchFromApis(query: string): Promise<NewFood[]> {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/** Search for foods. Checks DB cache first, then USDA → Open Food Facts. */
-export async function searchFoods(query: string): Promise<FoodResult[]> {
-  // 1. Serve cached DB rows if present
-  const cached = await prisma.food.findMany({
-    where: { name: { contains: query, mode: 'insensitive' } },
-    take: 20,
-  });
-  if (cached.length > 0) return cached.map(toResult);
-
-  // 2. Hit the external APIs
-  const items = await fetchFromApis(query);
-
-  // 3. De-duplicate by name (one row per name+source) to avoid upsert races
+// Persist API results so repeat searches are instant. Sequential — the pooled
+// DATABASE_URL runs with connection_limit=1.
+async function persist(items: NewFood[]): Promise<FoodResult[]> {
   const byKey = new Map<string, NewFood>();
   for (const it of items) {
     const k = `${it.name}::${it.source}`;
     if (!byKey.has(k)) byKey.set(k, it);
   }
-  const unique = [...byKey.values()];
-  if (unique.length === 0) return [];
-
-  // 4. Persist so the next identical search is instant.
-  //    Sequential — the pooled DATABASE_URL runs with connection_limit=1.
   const saved: Food[] = [];
-  for (const data of unique) {
+  for (const data of byKey.values()) {
     saved.push(
       await prisma.food.upsert({
-        where:  { name_source: { name: data.name, source: data.source } } as never,
+        where:  { name_source: { name: data.name, source: data.source } },
         update: data,
         create: data,
       })
     );
   }
   return saved.map(toResult);
+}
+
+/**
+ * Search for foods from BOTH the local DB (custom + cached) AND the live APIs,
+ * merged. The DB is never the sole source — fresh API matches always surface
+ * too. Custom dishes (added by any user) rank first.
+ */
+export async function searchFoods(query: string): Promise<FoodResult[]> {
+  // Run DB and external lookups together; the API call is the slow leg.
+  const [cached, apiResult] = await Promise.all([
+    prisma.food.findMany({
+      where: { name: { contains: query, mode: 'insensitive' } },
+      take: 25,
+    }),
+    fetchFromApis(query).catch(err => {
+      console.warn('[nutrition] API search failed:', (err as Error).message);
+      return null;   // tolerate — fall back to DB-only
+    }),
+  ]);
+
+  const dbResults  = cached.map(toResult);
+  const apiResults = apiResult ? await persist(apiResult) : [];
+
+  // Both sources empty AND the API actually errored → surface the failure.
+  if (dbResults.length === 0 && apiResult === null) {
+    throw new Error('Food lookup is temporarily unavailable. Please try again.');
+  }
+
+  // Merge, dedup by name (case-insensitive). Custom dishes first, then the rest
+  // of the DB cache, then anything new from the API.
+  const ordered = [
+    ...dbResults.filter(f => f.source === 'custom'),
+    ...dbResults.filter(f => f.source !== 'custom'),
+    ...apiResults,
+  ];
+  const seen = new Set<string>();
+  const out: FoodResult[] = [];
+  for (const f of ordered) {
+    const key = f.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out.slice(0, 25);
+}
+
+export interface CustomFoodInput {
+  name:            string;
+  caloriesPer100g: number;
+  protein:         number;
+  carbs:           number;
+  fat:             number;
+  fibre:           number;
+}
+
+/**
+ * Persist a custom "Others" dish. Shared globally — once any user adds it, it
+ * shows up in everyone's searches. Re-adding the same name overwrites it.
+ */
+export async function createCustomFood(input: CustomFoodInput): Promise<FoodResult> {
+  const data = {
+    name:            titleCase(input.name.trim()).slice(0, 120),
+    caloriesPer100g: round2(input.caloriesPer100g),
+    protein:         round2(input.protein),
+    carbs:           round2(input.carbs),
+    fat:             round2(input.fat),
+    fibre:           round2(input.fibre),
+    source:          'custom',
+  };
+  const row = await prisma.food.upsert({
+    where:  { name_source: { name: data.name, source: 'custom' } },
+    update: data,
+    create: data,
+  });
+  return toResult(row);
 }
 
 /** Fetch a single food by ID (used internally by foodLog service). */

@@ -11,13 +11,18 @@ import Card from '@/components/ui/Card';
 import MealSection from './MealSection';
 
 export default function TodayView() {
-  const { logs, targets, selectedDate, setSelectedDate, addLog, updateLog, deleteLog } = useApp();
+  const { logs, targets, fasts, selectedDate, setSelectedDate, addLog, updateLog, deleteLog, addFast, removeFast } = useApp();
   const today = toISO(new Date());
   const t = sumDay(logs, selectedDate);
   const isToday = selectedDate === today;
 
   const dayItems = (meal: string) =>
     logs.filter(l => l.date === selectedDate && l.meal === meal);
+
+  const isFasting = (meal: string) =>
+    fasts.some(f => f.date === selectedDate && f.meal === meal);
+  const toggleFast = (meal: string) =>
+    isFasting(meal) ? removeFast(selectedDate, meal) : addFast(selectedDate, meal);
 
   const go = (n: number) =>
     setSelectedDate(toISO(addDays(new Date(selectedDate + 'T00:00:00'), n)));
@@ -56,9 +61,11 @@ export default function TodayView() {
           key={meal}
           meal={meal}
           items={dayItems(meal)}
+          isFasting={isFasting(meal)}
           onAdd={(foodId: number, qty: number) => addLog(meal, foodId, qty)}
           onUpdate={updateLog}
           onDelete={deleteLog}
+          onToggleFast={() => toggleFast(meal)}
         />
       ))}
     </div>
