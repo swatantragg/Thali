@@ -40,9 +40,25 @@ model User {
   name         String?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  profile Profile?
+  profile           Profile?
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
+}
+
+model PushSubscription {
+  // One row per device/browser the user has enabled notifications on.
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  endpoint  String   @unique               // push service URL — identifies the sub
+  p256dh    String                          // client public key (payload encryption)
+  auth      String                          // client auth secret
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 model Profile {
@@ -54,7 +70,7 @@ model Profile {
   age           Int
   heightCm      Decimal  @map("height_cm")      @db.Decimal(5, 1)
   weightKg      Decimal  @map("weight_kg")      @db.Decimal(5, 2)
-  activityLevel Decimal  @default(1.55) @map("activity_level") @db.Decimal(3, 2)
+  activityLevel Decimal  @default(1.55) @map("activity_level") @db.Decimal(4, 3)
   goal          Goal     @default(maintain)
   calTarget     Int      @map("cal_target")
   proteinTarget Int      @map("protein_target")

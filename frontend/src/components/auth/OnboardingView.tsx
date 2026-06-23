@@ -6,9 +6,10 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { Profile } from '@/types';
 import { computeTargets } from '@/lib/nutrition';
-import { allowDecimals, allowInteger } from '@/lib/validate';
+import { allowInteger } from '@/lib/validate';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import Select from '@/components/ui/Select';
+import DecimalInput from '@/components/ui/DecimalInput';
 
 const inputCls =
   'w-28 text-right text-sm text-ink bg-surface-2 rounded-lg px-2 py-1.5 outline-none border border-line focus:border-primary transition-colors';
@@ -90,12 +91,12 @@ export default function OnboardingView() {
                 onChange={e => { if (allowInteger(e.target.value)) upd('age', +e.target.value); }} className={inputCls} required />
             </Field>
             <Field label="Height (cm)">
-              <input type="text" inputMode="decimal" value={form.heightCm} min={100} max={250}
-                onChange={e => { if (allowDecimals(e.target.value, 2)) upd('heightCm', +e.target.value); }} className={inputCls} required />
+              <DecimalInput value={form.heightCm} decimals={2}
+                onValueChange={v => upd('heightCm', v)} className={inputCls} required />
             </Field>
             <Field label="Weight (kg)">
-              <input type="text" inputMode="decimal" value={form.weightKg} min={30} max={300}
-                onChange={e => { if (allowDecimals(e.target.value, 2)) upd('weightKg', +e.target.value); }} className={inputCls} required />
+              <DecimalInput value={form.weightKg} decimals={2}
+                onValueChange={v => upd('weightKg', v)} className={inputCls} required />
             </Field>
             <Field label="Activity level">
               <Select value={form.activityLevel} onChange={e => upd('activityLevel', +e.target.value)} className={selectCls}>

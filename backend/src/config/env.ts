@@ -18,6 +18,16 @@ const schema = z
     // Legacy / unused — food search now uses USDA + Open Food Facts
     NUTRITION_API_URL:   z.string().optional(),
     NUTRITION_API_KEY:   z.string().optional(),
+    // ── Web Push (meal reminders) ────────────────────────────────────────
+    // All three must be set to enable push; otherwise the feature is off.
+    // Generate a keypair with: npx web-push generate-vapid-keys
+    VAPID_PUBLIC_KEY:    z.string().optional(),
+    VAPID_PRIVATE_KEY:   z.string().optional(),
+    VAPID_SUBJECT:       z.string().default('mailto:admin@thali.app'),
+    // Nightly reminder schedule (cron) + the timezone it's interpreted in.
+    // Default: 22:30 every day, India Standard Time.
+    REMINDER_CRON:       z.string().default('30 22 * * *'),
+    REMINDER_TZ:         z.string().default('Asia/Kolkata'),
   })
   // ── Production safety gates ──────────────────────────────────────────────
   .superRefine((val, ctx) => {
@@ -55,3 +65,6 @@ export const env = parsed.data;
 export const allowedOrigins = env.CLIENT_URL.split(',')
   .map(o => o.trim())
   .filter(Boolean);
+
+/** Web Push is active only when a full VAPID keypair is configured. */
+export const pushEnabled = Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);

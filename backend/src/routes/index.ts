@@ -5,6 +5,7 @@ import logsRouter    from './logs.route';
 import foodsRouter   from './foods.route';
 import weightRouter  from './weight.route';
 import fastsRouter   from './fasts.route';
+import pushRouter    from './push.route';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/logs',    logsRouter);
 router.use('/foods',   foodsRouter);
 router.use('/weight',  weightRouter);
 router.use('/fasts',   fastsRouter);
+router.use('/push',    pushRouter);
 
 export default router;

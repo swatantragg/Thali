@@ -7,9 +7,11 @@ import { useAuth } from '@/context/AuthContext';
 import { Profile } from '@/types';
 import { COLORS } from '@/lib/constants';
 import { computeTargets } from '@/lib/nutrition';
-import { allowDecimals, allowInteger } from '@/lib/validate';
+import { allowInteger } from '@/lib/validate';
 import Card from '@/components/ui/Card';
 import Select from '@/components/ui/Select';
+import DecimalInput from '@/components/ui/DecimalInput';
+import ReminderCard from '@/components/profile/ReminderCard';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -176,16 +178,16 @@ export default function ProfileView() {
         </Field>
         <Field label="Height (cm)">
           {editing ? (
-            <input type="text" inputMode="decimal" value={draft.heightCm} min={100} max={250}
-              onChange={e => { if (allowDecimals(e.target.value, 2)) upd('heightCm', +e.target.value); }} className={inputCls} />
+            <DecimalInput value={draft.heightCm} decimals={2}
+              onValueChange={v => upd('heightCm', v)} className={inputCls} />
           ) : (
             <span className={valueCls}>{profile.heightCm} cm</span>
           )}
         </Field>
         <Field label="Weight (kg)">
           {editing ? (
-            <input type="text" inputMode="decimal" value={draft.weightKg} min={30} max={300}
-              onChange={e => { if (allowDecimals(e.target.value, 2)) upd('weightKg', +e.target.value); }} className={inputCls} />
+            <DecimalInput value={draft.weightKg} decimals={2}
+              onValueChange={v => upd('weightKg', v)} className={inputCls} />
           ) : (
             <span className={valueCls}>{profile.weightKg} kg</span>
           )}
@@ -230,6 +232,9 @@ export default function ProfileView() {
           {logged ? 'Logged' : "Log today's weight"}
         </button>
       </div>
+
+      {/* Nightly meal reminders (Web Push) */}
+      <ReminderCard />
 
       <Card className="p-4">
         <div className="text-xs font-medium text-ink-muted mb-3">

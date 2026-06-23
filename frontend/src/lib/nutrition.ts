@@ -2,6 +2,20 @@ import { LogEntry, Profile, Targets, DaySummary } from '@/types';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+// The five canonical activity multipliers (must match the <option> values
+// rendered in the profile/onboarding selects).
+export const ACTIVITY_LEVELS = [1.2, 1.375, 1.55, 1.725, 1.9] as const;
+
+// Snap a stored/raw multiplier to the nearest canonical value. Protects the
+// <select> from falling back to its first option ("Sedentary") when an
+// imprecise value (e.g. a legacy 1.38 / 1.73 row) matches no <option>.
+export function snapActivityLevel(v: number): number {
+  if (!Number.isFinite(v)) return 1.55;
+  return ACTIVITY_LEVELS.reduce((best, lvl) =>
+    Math.abs(lvl - v) < Math.abs(best - v) ? lvl : best
+  );
+}
+
 export function sumDay(logs: LogEntry[], iso: string): DaySummary {
   const t = { calories: 0, protein: 0, carbs: 0, fat: 0, fibre: 0 };
   for (const l of logs) {

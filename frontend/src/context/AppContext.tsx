@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import { LogEntry, Profile, Targets, TabId, WeightEntry, FastEntry, CustomFoodInput, FoodResult } from '@/types';
-import { computeTargets } from '@/lib/nutrition';
+import { computeTargets, snapActivityLevel } from '@/lib/nutrition';
 import { toISO } from '@/lib/dates';
 import { api } from '@/lib/api';
 import { useAuth } from './AuthContext';
@@ -114,7 +114,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             age:           data.age,
             heightCm:      Number(data.heightCm),
             weightKg:      Number(data.weightKg),
-            activityLevel: Number(data.activityLevel),
+            activityLevel: snapActivityLevel(Number(data.activityLevel)),
             goal:          data.goal,
             name:          data.name ?? undefined,
           });

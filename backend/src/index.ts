@@ -6,6 +6,7 @@ import { env, allowedOrigins } from './config/env';
 import { prisma } from './db/client';
 import apiRouter from './routes/index';
 import { apiLimiter } from './middleware/rateLimit';
+import { startScheduler } from './jobs/scheduler';
 
 const app = express();
 
@@ -84,6 +85,7 @@ async function start() {
   try {
     await prisma.$connect();
     console.log('✅  Database connected');
+    startScheduler();   // nightly meal reminders (no-op unless push is configured)
     app.listen(PORT, () => console.log(`🚀  API listening on http://localhost:${PORT}`));
   } catch (err) {
     console.error('❌  Failed to start:', err);
