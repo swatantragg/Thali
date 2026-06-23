@@ -28,6 +28,10 @@ const schema = z
     // Default: 22:30 every day, India Standard Time.
     REMINDER_CRON:       z.string().default('30 22 * * *'),
     REMINDER_TZ:         z.string().default('Asia/Kolkata'),
+    // Shared secret for the external reminder trigger (POST /api/push/run-reminders).
+    // Required on hosts that sleep on idle (e.g. Render free) where the in-process
+    // cron can't be trusted to fire. Endpoint is disabled (404) when unset.
+    CRON_SECRET:         z.string().min(16).optional(),
   })
   // ── Production safety gates ──────────────────────────────────────────────
   .superRefine((val, ctx) => {

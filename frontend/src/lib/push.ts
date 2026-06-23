@@ -96,9 +96,3 @@ export async function disablePush(): Promise<void> {
   }).catch(() => {});
   await sub.unsubscribe().catch(() => {});
 }
-
-/** Fire a server-sent test notification to confirm the setup works. */
-export async function sendTestPush(): Promise<void> {
-  const res = await api('/push/test', { method: 'POST' });
-  if (!res.ok) throw new Error('Could not send a test notification');
-}
