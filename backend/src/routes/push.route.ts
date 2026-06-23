@@ -1,11 +1,20 @@
 import { Router, Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { env, pushEnabled } from '../config/env';
-import { saveSubscription, deleteSubscription, sendToUser } from '../services/push.service';
-import { randomQuote } from '../services/quotes';
+import { saveSubscription, deleteSubscription } from '../services/push.service';
+import { runMealReminders } from '../services/reminder.service';
 
 const router = Router();
+
+/** Constant-time check of a provided secret against CRON_SECRET. */
+function validCronSecret(provided: string | undefined): boolean {
+  if (!env.CRON_SECRET || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(env.CRON_SECRET);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 const SubscriptionBody = z.object({
   endpoint: z.string().url().max(2048),
@@ -53,21 +62,25 @@ router.post('/unsubscribe', authenticate, async (req, res: Response) => {
   }
 });
 
-// POST /api/push/test — send a one-off notification to the caller's devices,
-// so they can confirm notifications work without waiting for 10:30 PM.
-router.post('/test', authenticate, async (req, res: Response) => {
-  if (!pushEnabled) return res.status(404).json({ error: 'Push notifications are not enabled' });
+// POST /api/push/run-reminders — external scheduler trigger.
+// For hosts that sleep on idle (Render free), where the in-process cron can't
+// be relied on. Authenticated by the shared CRON_SECRET, not a user JWT.
+// Call from cron-job.org / a Render Cron Job / GitHub Actions at the desired
+// time with header:  Authorization: Bearer <CRON_SECRET>
+router.post('/run-reminders', async (req: Request, res: Response) => {
+  if (!env.CRON_SECRET) return res.status(404).json({ error: 'Not enabled' });
+
+  const auth = req.headers.authorization;
+  const provided = auth?.startsWith('Bearer ')
+    ? auth.slice(7)
+    : (req.headers['x-cron-secret'] as string | undefined);
+  if (!validCronSecret(provided)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const sent = await sendToUser((req as AuthRequest).userId, {
-      title: 'Thali reminder test ✅',
-      body:  randomQuote(),
-      url:   '/',
-      tag:   'thali-test',
-    });
-    res.json({ ok: true, sent });
+    const notified = await runMealReminders();
+    res.json({ ok: true, notified });
   } catch {
-    res.status(500).json({ error: 'Failed to send test notification' });
+    res.status(500).json({ error: 'Failed to run reminders' });
   }
 });
 

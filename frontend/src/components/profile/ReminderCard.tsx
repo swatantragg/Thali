@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bell, BellOff, Loader2, Check } from 'lucide-react';
+import { Bell, BellOff, Loader2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import {
   isPushSupported, pushPermission, isPushEnabled,
-  enablePush, disablePush, sendTestPush,
+  enablePush, disablePush,
 } from '@/lib/push';
 
 // iOS only delivers Web Push when the PWA is installed to the Home Screen.
@@ -22,7 +22,6 @@ export default function ReminderCard() {
   const [supported, setSupported] = useState(false);
   const [enabled, setEnabled]     = useState(false);
   const [busy, setBusy]           = useState(false);
-  const [tested, setTested]       = useState(false);
   const [err, setErr]             = useState<string | null>(null);
   const [denied, setDenied]       = useState(false);
   const [needsInstall, setNeedsInstall] = useState(false);
@@ -49,17 +48,6 @@ export default function ReminderCard() {
       if (pushPermission() === 'denied') setDenied(true);
     } finally {
       setBusy(false);
-    }
-  };
-
-  const test = async () => {
-    setErr(null);
-    try {
-      await sendTestPush();
-      setTested(true);
-      setTimeout(() => setTested(false), 2500);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Test failed');
     }
   };
 
@@ -90,16 +78,6 @@ export default function ReminderCard() {
           {enabled ? 'Turn off' : 'Turn on'}
         </button>
       </div>
-
-      {enabled && (
-        <button
-          onClick={test}
-          className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors"
-        >
-          {tested ? <Check size={13} /> : null}
-          {tested ? 'Test sent — check your notifications' : 'Send a test notification'}
-        </button>
-      )}
 
       {denied && (
         <p className="text-xs text-danger mt-2">
