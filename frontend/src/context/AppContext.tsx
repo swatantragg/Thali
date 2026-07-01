@@ -143,6 +143,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [latestWeight]);
 
+  // ── Weight (low-level persist) ──────────────────────────────────────────
+  // POST a weigh-in for a date (backend upserts one row per user per day) and
+  // merge it into local state. Shared by the auto-log-on-profile-save path and
+  // the explicit "log weight" actions.
+  const persistWeight = useCallback(async (weightKg: number, date?: string) => {
+    const logDate = date ?? toISO(new Date());
+    const res = await api('/weight', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ date: logDate, weightKg }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save weight');
+    }
+    const saved: WeightEntry = await res.json();
+    setWeights(prev => {
+      const next = prev.filter(w => w.date !== saved.date);
+      next.push({ ...saved, weightKg: Number(saved.weightKg) });
+      next.sort((a, b) => a.date.localeCompare(b.date));
+      return next;
+    });
+  }, []);
+
   // ── Profile ───────────────────────────────────────────────────────────
   const setProfile = useCallback(async (p: Profile) => {
     setProfileState(p);
@@ -156,7 +180,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save profile');
     }
     markProfileComplete();
-  }, [markProfileComplete]);
+    // Auto weight-log: saving a profile whose weight differs from the last
+    // weigh-in records today's weight automatically (idempotent upsert). Failure
+    // here is non-fatal — the profile itself is already saved.
+    if (p.weightKg > 0 && p.weightKg !== latestWeight) {
+      try { await persistWeight(p.weightKg); } catch { /* ignore */ }
+    }
+  }, [markProfileComplete, latestWeight, persistWeight]);
 
   // ── Add log ───────────────────────────────────────────────────────────
   const addLog = useCallback(
@@ -210,29 +240,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [refreshLogs]);
 
   // ── Add / update weight ─────────────────────────────────────────────────
-  // Persists a weight log AND syncs profile.weightKg (so targets recompute
-  // and the profile auto-fills the latest weight).
+  // Persists a weight log AND syncs profile.weightKg (so targets recompute and
+  // the profile auto-fills the latest weight). Syncs the profile directly
+  // rather than via setProfile to avoid re-logging the same weigh-in.
   const addWeight = useCallback(async (weightKg: number, date?: string) => {
-    const logDate = date ?? toISO(new Date());
-    const res = await api('/weight', {
-      method:  'POST',
+    await persistWeight(weightKg, date);
+    const next = { ...profile, weightKg };
+    setProfileState(next);
+    const res = await api('/profile', {
+      method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ date: logDate, weightKg }),
+      body:    JSON.stringify(next),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save weight');
+      throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save profile');
     }
-    const saved: WeightEntry = await res.json();
-    setWeights(prev => {
-      const next = prev.filter(w => w.date !== saved.date);
-      next.push({ ...saved, weightKg: Number(saved.weightKg) });
-      next.sort((a, b) => a.date.localeCompare(b.date));
-      return next;
-    });
-    // keep profile target weight in sync with the latest entry
-    await setProfile({ ...profile, weightKg });
-  }, [profile, setProfile]);
+  }, [profile, persistWeight]);
 
   // ── Fasting (mark/clear a skipped meal) ─────────────────────────────────
   const addFast = useCallback(async (date: string, meal: string) => {

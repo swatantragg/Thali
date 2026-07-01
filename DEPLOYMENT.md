@@ -61,9 +61,13 @@ rewrites `/api/*` to `API_URL` server-side. Benefits:
    GOOGLE_CLIENT_ID=<your google client id>
    FDC_API_KEY=<your USDA key>
    CLIENT_URL=https://<your-frontend>.vercel.app   # exact origin(s), comma-separated
+   REDIS_URL=                                # optional; set only for >1 instance/serverless
    ```
-4. Health check path: `/health`.
-5. Deploy → note the public URL, e.g. `https://thali-api.onrender.com`.
+4. **Run the DB migration** (adds the `token_version` column used for session
+   revocation): from `backend/`, `npm run db:push` (or `prisma migrate deploy`
+   in CI). Safe/additive — new column defaults to 0.
+5. Health check path: `/health`.
+6. Deploy → note the public URL, e.g. `https://thali-api.onrender.com`.
 
 (Railway / Fly.io / VPS: same env vars; on a VPS just `docker compose up -d --build`
 after pointing `CLIENT_URL` at the real frontend domain.)
@@ -108,15 +112,25 @@ Confirm `.env` is gitignored (it is) and never committed.
 ## 7. Security features now in the app
 
 **Backend**
+- **Session in an httpOnly + Secure + SameSite=Strict cookie** — the JWT is not
+  readable by JS, so an XSS payload can't exfiltrate it. (Secure is prod-only so
+  local http dev still works.)
+- **CSRF double-submit** — a readable `thali_csrf` cookie must be echoed in the
+  `X-CSRF-Token` header on cookie-authenticated mutations; SameSite=Strict is the
+  first line, this is the backstop.
+- **Session revocation** — each JWT embeds a `tv` (token version) matched against
+  `users.token_version` on every request. `POST /auth/logout-all` bumps it to
+  invalidate every issued token instantly (compromise / logout-everywhere).
 - `helmet` security headers (HSTS in prod, noSniff, frameguard, no `x-powered-by`).
-- Global flood limiter **300 req/min/IP** — normal use unaffected, bombardment → 429.
-- Strict auth limiter **10 attempts/15 min/IP** on register/login/google.
+- Global flood limiter **300 req/min/IP**; per-IP auth limiter **10/15 min**; plus a
+  per-EMAIL **account lockout (5 failed/15 min)** so IP-rotating stuffing can't grind
+  one account. Set `REDIS_URL` to share all counters across instances/serverless.
 - Strict CORS origin allowlist (`CLIENT_URL`), credentials on.
 - JSON body capped at **32 kB** → 413 on oversized.
 - Central error handler — generic messages, no stack traces / DB text leaked.
 - `trust proxy = 1` so per-client IP limiting works behind the proxy/LB.
 - Env gates: prod **refuses to boot** without a ≥32-char `JWT_SECRET` or if the
-  `DEV_USER_ID` auth bypass is set.
+  `DEV_USER_ID` auth bypass is set; warns if `DATABASE_URL` lacks TLS.
 - bcrypt cost 12; password policy (≥8, upper+lower+digit+symbol, ≤72 bytes).
 - Parameterized Prisma / `$queryRaw` (no SQL injection); ownership-scoped
   mutations (no IDOR); path-param validation before `BigInt()`.
@@ -128,11 +142,17 @@ Confirm `.env` is gitignored (it is) and never committed.
   Strongest practical XSS defence.
 - Static backstop headers (HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy,
   Permissions-Policy).
-- **30-day auto-logout**: token carries a 30-day expiry; checked on read, on a
-  timer, and on tab refocus. Matches backend `JWT_EXPIRES_IN=30d`.
-- On logout/expiry: token **and all service-worker caches** are wiped.
+- **No token in `localStorage`** — auth rides the httpOnly cookie; the client only
+  reads a non-sensitive expiry cookie for the **30-day auto-logout** (checked on
+  read, on a timer, and on tab refocus; matches backend `JWT_EXPIRES_IN=30d`).
+- On logout/expiry: server clears the httpOnly cookie and **all service-worker
+  caches** are wiped.
 - Service worker **never caches `/api/`** (no personal data persisted on device),
   same-origin assets only.
+
+**Supply chain / CI**
+- `.github/dependabot.yml` — weekly dependency PRs (backend, frontend, actions).
+- `.github/workflows/security.yml` — `npm audit` (high/critical) on push, PR, and weekly.
 
 ---
 
@@ -144,15 +164,14 @@ oversized-payload/flood DoS, the dev auth bypass). To keep it that way:
 
 - [ ] Rotate every leaked secret (section 6) — biggest current risk.
 - [ ] Force HTTPS only (Vercel + Render do this; HSTS is set).
-- [ ] Run `npm audit` and patch; enable Dependabot.
-- [ ] If you scale the backend to >1 instance/serverless → move rate-limit + any
-      session state to Redis (Upstash), else limits leak.
+- [x] Run `npm audit` and enable Dependabot — CI added (`.github/`). Still patch what it flags.
+- [ ] If you scale the backend to >1 instance/serverless → set `REDIS_URL` so the
+      rate-limit counters are shared (store swap is already wired).
 - [ ] Enable the platform WAF / DDoS protection (Vercel + Cloudflare in front).
 - [ ] Add email verification + password reset (secure, single-use, expiring tokens)
       before collecting real user data at scale.
-- [ ] Consider migrating the token from `localStorage` to an httpOnly, Secure,
-      SameSite cookie for defence-in-depth (CSP already blocks the XSS path; this
-      closes it fully). Requires adding CSRF protection.
+- [x] Token moved from `localStorage` → httpOnly + Secure + SameSite=Strict cookie,
+      with CSRF double-submit and server-side revocation (`tv` / logout-all).
 - [ ] Keep an audit log of auth events (logins, failures, lockouts).
 - [ ] Privacy: you're collecting health data — publish a privacy policy, add
       account deletion (cascade already in schema), and a data-export path.

@@ -6,6 +6,7 @@ import { env, allowedOrigins } from './config/env';
 import { prisma } from './db/client';
 import apiRouter from './routes/index';
 import { apiLimiter } from './middleware/rateLimit';
+import { csrfProtection } from './middleware/csrf';
 import { startScheduler } from './jobs/scheduler';
 
 const app = express();
@@ -49,6 +50,9 @@ app.use(express.json({ limit: '32kb' }));
 
 // ── App-wide rate limit (flood guard) ────────────────────────────────────────
 app.use(apiLimiter);
+
+// ── CSRF (double-submit; enforced only on cookie-authenticated mutations) ─────
+app.use('/api', csrfProtection);
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 app.use('/api', apiRouter);

@@ -32,10 +32,20 @@ function requireSecret(): string {
   return env.JWT_SECRET;
 }
 
-function signToken(userId: string): string {
-  return jwt.sign({ sub: userId }, requireSecret(), {
+// The `tv` (token version) claim binds a token to the user's current
+// tokenVersion; bumping that column server-side revokes every issued token.
+function signToken(userId: string, tokenVersion: number): string {
+  return jwt.sign({ sub: userId, tv: tokenVersion }, requireSecret(), {
     expiresIn: env.JWT_EXPIRES_IN,
   } as jwt.SignOptions);
+}
+
+/** Invalidate all outstanding sessions for a user (logout-everywhere / compromise). */
+export async function revokeSessions(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data:  { tokenVersion: { increment: 1 } },
+  });
 }
 
 async function toAuthUser(u: { id: string; email: string; name: string | null }): Promise<AuthUser> {
@@ -57,7 +67,7 @@ export async function register(email: string, password: string, name?: string): 
     data: { email: normalized, passwordHash, name: name?.trim() || null },
   });
 
-  return { token: signToken(user.id), user: await toAuthUser(user) };
+  return { token: signToken(user.id, user.tokenVersion), user: await toAuthUser(user) };
 }
 
 export async function login(email: string, password: string): Promise<AuthResult> {
@@ -68,7 +78,7 @@ export async function login(email: string, password: string): Promise<AuthResult
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) throw new AuthError(401, 'Invalid email or password');
 
-  return { token: signToken(user.id), user: await toAuthUser(user) };
+  return { token: signToken(user.id, user.tokenVersion), user: await toAuthUser(user) };
 }
 
 /** Verify a Google ID-token credential, then upsert the user. */
@@ -98,7 +108,7 @@ export async function googleLogin(credential: string): Promise<AuthResult> {
     user = await prisma.user.update({ where: { id: user.id }, data: { googleSub } });
   }
 
-  return { token: signToken(user.id), user: await toAuthUser(user) };
+  return { token: signToken(user.id, user.tokenVersion), user: await toAuthUser(user) };
 }
 
 export async function getMe(userId: string): Promise<AuthUser> {

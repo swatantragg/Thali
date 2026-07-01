@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { register, login, googleLogin, getMe, AuthError } from '../services/auth.service';
-import { authLimiter } from '../middleware/rateLimit';
+import { register, login, googleLogin, getMe, revokeSessions, AuthError } from '../services/auth.service';
+import { authLimiter, accountLimiter } from '../middleware/rateLimit';
+import { setAuthCookies, clearAuthCookies } from '../config/cookies';
 
 const router = Router();
 
@@ -40,18 +41,22 @@ router.post('/register', authLimiter, async (req: Request, res: Response) => {
   const parsed = Credentials.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten().fieldErrors });
   try {
-    res.status(201).json(await register(parsed.data.email, parsed.data.password, parsed.data.name));
+    const result = await register(parsed.data.email, parsed.data.password, parsed.data.name);
+    setAuthCookies(res, result.token);
+    res.status(201).json({ user: result.user });
   } catch (err) {
     fail(res, err);
   }
 });
 
-// POST /api/auth/login
-router.post('/login', authLimiter, async (req: Request, res: Response) => {
+// POST /api/auth/login  (authLimiter = per-IP flood; accountLimiter = per-email lockout)
+router.post('/login', authLimiter, accountLimiter, async (req: Request, res: Response) => {
   const parsed = LoginCredentials.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Email and password required' });
   try {
-    res.json(await login(parsed.data.email, parsed.data.password));
+    const result = await login(parsed.data.email, parsed.data.password);
+    setAuthCookies(res, result.token);
+    res.json({ user: result.user });
   } catch (err) {
     fail(res, err);
   }
@@ -64,7 +69,9 @@ router.post('/google', authLimiter, async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Missing Google credential' });
   }
   try {
-    res.json(await googleLogin(credential));
+    const result = await googleLogin(credential);
+    setAuthCookies(res, result.token);
+    res.json({ user: result.user });
   } catch (err) {
     fail(res, err);
   }
@@ -74,6 +81,23 @@ router.post('/google', authLimiter, async (req: Request, res: Response) => {
 router.get('/me', authenticate, async (req: Request, res: Response) => {
   try {
     res.json(await getMe((req as AuthRequest).userId));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// POST /api/auth/logout — clear this device's session cookies.
+router.post('/logout', (_req: Request, res: Response) => {
+  clearAuthCookies(res);
+  res.json({ ok: true });
+});
+
+// POST /api/auth/logout-all — revoke every issued token for this user, then clear.
+router.post('/logout-all', authenticate, async (req: Request, res: Response) => {
+  try {
+    await revokeSessions((req as AuthRequest).userId);
+    clearAuthCookies(res);
+    res.json({ ok: true });
   } catch (err) {
     fail(res, err);
   }

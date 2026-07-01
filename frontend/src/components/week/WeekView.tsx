@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { useApp } from '@/context/AppContext';
 import { sumDay } from '@/lib/nutrition';
-import { toISO, addDays } from '@/lib/dates';
+import { toISO, addDays, startOfWeek } from '@/lib/dates';
 import { COLORS } from '@/lib/constants';
 import Card from '@/components/ui/Card';
 import StatCard from '@/components/ui/StatCard';
@@ -18,10 +18,11 @@ export default function WeekView() {
   const { logs, targets } = useApp();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
+  // Current calendar week, Monday → Sunday (not a rolling 7-day window).
   const data = useMemo(() => {
-    const base = new Date();
+    const monday = startOfWeek(new Date());
     return Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(base, i - 6);
+      const d = addDays(monday, i);
       return { name: DAY_NAMES[d.getDay()], date: toISO(d), ...sumDay(logs, toISO(d)) };
     });
   }, [logs]);

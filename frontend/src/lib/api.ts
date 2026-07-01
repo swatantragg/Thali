@@ -1,57 +1,54 @@
-// Token-aware fetch wrapper. All calls go through Next rewrite /api/* → backend.
-// See next.config.js — no hardcoded port in the browser bundle.
+// Cookie-based fetch wrapper. The session token lives in an httpOnly cookie set
+// by the backend (unreadable by JS → not stealable via XSS). This module only
+// reads the non-httpOnly CSRF + expiry cookies. All calls go through the Next
+// rewrite /api/* → backend, so cookies are same-origin.
 
-const TOKEN_KEY = 'thali_token';
-const EXPIRES_KEY = 'thali_token_exp';
+const CSRF_COOKIE = 'thali_csrf';
+const EXP_COOKIE  = 'thali_session_exp';
 
-// Auto-logout window. Must match the backend JWT_EXPIRES_IN (30d) so the client
-// drops the session at the same time the server stops honouring the token.
+// Auto-logout window. Matches the backend JWT_EXPIRES_IN (30d) and the cookie
+// Max-Age, so the client drops the session as the server stops honouring it.
 export const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  // Enforce the 30-day absolute expiry on every read.
-  if (isSessionExpired()) {
-    clearToken();
-    return null;
-  }
-  return window.localStorage.getItem(TOKEN_KEY);
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** Read a non-httpOnly cookie by name (returns null on the server / if absent). */
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const escaped = name.replace(/([.*+?^${}()|[\]\\])/g, '\\$1');
+  const match = document.cookie.match(new RegExp('(?:^|; )' + escaped + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
-  window.localStorage.setItem(EXPIRES_KEY, String(Date.now() + SESSION_MAX_AGE_MS));
-}
-
-export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(EXPIRES_KEY);
-}
-
-/** True once the stored session has passed its 30-day expiry. */
+/** True once a session exists but has passed its stored expiry. */
 export function isSessionExpired(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!window.localStorage.getItem(TOKEN_KEY)) return false;
-  const exp = Number(window.localStorage.getItem(EXPIRES_KEY));
-  // Treat a missing/garbage expiry as expired → fail closed.
-  return !exp || Date.now() > exp;
+  const exp = Number(readCookie(EXP_COOKIE));
+  if (!exp) return false;               // no expiry cookie → no known session
+  return Date.now() > exp;
 }
 
-/** ms until the session expires (0 if already expired / no session). */
+/** ms until the session expires (0 if none / already expired). */
 export function sessionTimeLeftMs(): number {
-  if (typeof window === 'undefined') return 0;
-  if (!window.localStorage.getItem(TOKEN_KEY)) return 0;
-  const exp = Number(window.localStorage.getItem(EXPIRES_KEY));
+  const exp = Number(readCookie(EXP_COOKIE));
   return exp ? Math.max(0, exp - Date.now()) : 0;
 }
 
+/** Whether a session cookie is present at all (cheap logged-in hint on load). */
+export function hasSession(): boolean {
+  return readCookie(EXP_COOKIE) !== null;
+}
+
 /**
- * Wipe every trace of the user from this device: token, expiry, and any cached
- * API/page responses held by the service worker. Called on logout and on
- * session expiry so a shared/stolen device can't replay cached personal data.
+ * Wipe every client trace of the user: service-worker caches + the readable
+ * cookies. The httpOnly session cookie can only be cleared by the server
+ * (POST /auth/logout), which AuthContext calls on explicit logout.
  */
 export async function clearAllClientData(): Promise<void> {
-  clearToken();
+  if (typeof document !== 'undefined') {
+    for (const name of [CSRF_COOKIE, EXP_COOKIE]) {
+      document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Strict`;
+    }
+  }
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       const keys = await caches.keys();
@@ -62,12 +59,15 @@ export async function clearAllClientData(): Promise<void> {
   }
 }
 
-/** fetch() against /api with the bearer token auto-attached. */
+/** fetch() against /api with cookies attached + CSRF header on mutations. */
 export function api(path: string, opts: RequestInit = {}): Promise<Response> {
   const headers = new Headers(opts.headers);
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`/api${path}`, { ...opts, headers });
+  const method = (opts.method ?? 'GET').toUpperCase();
+  if (!SAFE_METHODS.has(method)) {
+    const csrf = readCookie(CSRF_COOKIE);
+    if (csrf) headers.set('X-CSRF-Token', csrf);
+  }
+  return fetch(`/api${path}`, { ...opts, headers, credentials: 'include' });
 }
 
 /** POST JSON helper. Throws Error(message) on non-2xx. */

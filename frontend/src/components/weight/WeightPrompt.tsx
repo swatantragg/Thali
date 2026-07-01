@@ -3,16 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Scale, X, Loader2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { toISO } from '@/lib/dates';
+import { toISO, startOfWeek } from '@/lib/dates';
 import { allowDecimals } from '@/lib/validate';
-
-/** Monday (week start) for a given date. */
-function mondayOf(d: Date): Date {
-  const x = new Date(d); x.setHours(0, 0, 0, 0);
-  const day = x.getDay();                 // 0 Sun … 6 Sat
-  x.setDate(x.getDate() + (day === 0 ? -6 : 1 - day));
-  return x;
-}
 
 /**
  * End-of-week weight check-in. Appears when no weight is logged for the current
@@ -26,7 +18,7 @@ export default function WeightPrompt() {
   const [busy, setBusy]   = useState(false);
   const [err, setErr]     = useState<string | null>(null);
 
-  const weekStartISO = useMemo(() => toISO(mondayOf(new Date())), []);
+  const weekStartISO = useMemo(() => toISO(startOfWeek(new Date())), []);
   const dismissKey = `thali_weight_prompt_${weekStartISO}`;
 
   useEffect(() => {

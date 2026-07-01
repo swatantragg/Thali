@@ -77,4 +77,4 @@ export interface CustomFoodInput {
 export type TabId = 'today' | 'week' | 'month' | 'profile';
 
 // Month-view range selector
-export type MonthRange = 'month' | '3m' | '6m' | 'year' | 'all';
+export type MonthRange = 'month' | 'lastMonth' | '3m' | '6m' | 'year' | 'all';

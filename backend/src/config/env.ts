@@ -32,6 +32,9 @@ const schema = z
     // Required on hosts that sleep on idle (e.g. Render free) where the in-process
     // cron can't be trusted to fire. Endpoint is disabled (404) when unset.
     CRON_SECRET:         z.string().min(16).optional(),
+    // Optional shared rate-limit store. Set on multi-instance / serverless deploys
+    // so limits are enforced globally instead of per-process.
+    REDIS_URL:           z.string().optional(),
   })
   // ── Production safety gates ──────────────────────────────────────────────
   .superRefine((val, ctx) => {
@@ -53,6 +56,14 @@ const schema = z
         path: ['DEV_USER_ID'],
         message: 'DEV_USER_ID must be empty in production (it bypasses authentication)',
       });
+    }
+
+    // Non-fatal: warn if the DB connection isn't clearly TLS-encrypted in prod.
+    if (!/sslmode=require|ssl=true|sslmode=verify/i.test(val.DATABASE_URL)) {
+      console.warn(
+        '⚠️  DATABASE_URL has no sslmode=require — DB traffic may be unencrypted. ' +
+        'Add ?sslmode=require (or your provider\'s TLS flag) in production.'
+      );
     }
   });
 

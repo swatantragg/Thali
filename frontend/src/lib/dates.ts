@@ -7,6 +7,15 @@ export const addDays = (d: Date, n: number): Date => {
   return x;
 };
 
+/** Monday 00:00 of the week containing `d` (weeks start on Monday). */
+export const startOfWeek = (d: Date): Date => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay();                     // 0 Sun … 6 Sat
+  x.setDate(x.getDate() + (day === 0 ? -6 : 1 - day));
+  return x;
+};
+
 export const parseISO = (iso: string): Date => new Date(iso + 'T00:00:00');
 
 export const formatDay = (iso: string): string => {

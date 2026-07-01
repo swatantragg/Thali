@@ -4,8 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import {
   api,
   postJSON,
-  getToken,
-  setToken,
+  hasSession,
   clearAllClientData,
   isSessionExpired,
   sessionTimeLeftMs,
@@ -18,8 +17,9 @@ export interface AuthUser {
   hasProfile: boolean;
 }
 
+// The token now lives in an httpOnly cookie the server sets; the body only
+// carries the user.
 interface AuthResult {
-  token: string;
   user: AuthUser;
 }
 
@@ -61,10 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, delay);
   }, [endSession]);
 
-  // Validate any stored token on mount.
+  // Validate the session cookie on mount by asking the server who we are.
   useEffect(() => {
     (async () => {
-      if (!getToken()) { setReady(true); return; }   // getToken() self-expires
+      // No session cookie, or it's past its stored expiry → skip the round-trip.
+      if (!hasSession() || isSessionExpired()) { setReady(true); return; }
       try {
         const res = await api('/auth/me');
         if (res.ok) {
@@ -95,8 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, endSession]);
 
+  // The server has already set the session cookies on the response by now.
   const handleResult = (r: AuthResult) => {
-    setToken(r.token);
     setUser(r.user);
     scheduleAutoLogout();
   };
@@ -114,6 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Clear the httpOnly session cookie on the server (best-effort), then wipe
+    // local state + caches.
+    void api('/auth/logout', { method: 'POST' }).catch(() => {});
     endSession();
   }, [endSession]);
 

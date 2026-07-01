@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Backend (Express + Prisma)
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      backend-deps:
+        patterns:
+          - "*"
+
+  # Frontend (Next.js)
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      frontend-deps:
+        patterns:
+          - "*"
+
+  # GitHub Actions used by our workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

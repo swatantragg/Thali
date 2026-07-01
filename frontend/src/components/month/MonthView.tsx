@@ -35,33 +35,48 @@ export default function MonthView() {
   }, [logs]);
 
   const now = new Date(); now.setHours(0, 0, 0, 0);
-  const todayISO = toISO(now);
+
+  // A single-calendar-month view: the current month (up to today) or last month.
+  const isDaily = range === 'month' || range === 'lastMonth';
 
   // Range start date
   const start = useMemo(() => {
-    if (range === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
-    if (range === '3m')    return new Date(now.getFullYear(), now.getMonth() - 2, 1);
-    if (range === '6m')    return new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    if (range === 'year')  return new Date(now.getFullYear(), 0, 1);
+    if (range === 'month')     return new Date(now.getFullYear(), now.getMonth(), 1);
+    if (range === 'lastMonth') return new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    if (range === '3m')        return new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    if (range === '6m')        return new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    if (range === 'year')      return new Date(now.getFullYear(), 0, 1);
     const all = [...logs.map(l => l.date), ...weights.map(w => w.date)].sort();
     return all.length ? parseISO(all[0]) : new Date(now.getFullYear(), now.getMonth(), 1);
   }, [range, logs, weights]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const inRange = (iso: string) => iso >= toISO(start) && iso <= todayISO;
+  // Range end: last month ends on the last day of the previous month; every
+  // other range runs up to today.
+  const end = useMemo(
+    () => (range === 'lastMonth' ? new Date(now.getFullYear(), now.getMonth(), 0) : now),
+    [range] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const endISO = toISO(end);
+
+  const inRange = (iso: string) => iso >= toISO(start) && iso <= endISO;
 
   const headerLabel =
-    range === 'month' ? now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) :
-    range === 'year'  ? String(now.getFullYear()) :
-    range === '3m'    ? 'Last 3 months' :
-    range === '6m'    ? 'Last 6 months' : 'All time';
+    range === 'month'     ? now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) :
+    range === 'lastMonth' ? start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) :
+    range === 'year'      ? String(now.getFullYear()) :
+    range === '3m'        ? 'Last 3 months' :
+    range === '6m'        ? 'Last 6 months' : 'All time';
 
   // ── Trend data ──────────────────────────────────────────────────────────
-  // 'month' → daily; longer ranges → monthly avg
+  // single month → daily; longer ranges → monthly avg
   const trend = useMemo(() => {
-    if (range === 'month') {
-      const days = now.getDate();
+    if (isDaily) {
+      const y = start.getFullYear();
+      const m = start.getMonth();
+      // current month → up to today; last month → the whole (completed) month
+      const days = range === 'month' ? now.getDate() : new Date(y, m + 1, 0).getDate();
       return Array.from({ length: days }, (_, i) => {
-        const iso = toISO(new Date(now.getFullYear(), now.getMonth(), i + 1));
+        const iso = toISO(new Date(y, m, i + 1));
         return { label: String(i + 1), calories: Math.round(dayMap.get(iso)?.calories ?? 0) };
       });
     }
@@ -101,15 +116,21 @@ export default function MonthView() {
   }, [dayMap, start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Weight series + average ───────────────────────────────────────────────
-  const weightSeries = useMemo(
-    () => weights
-      .filter(w => inRange(w.date))
-      .map(w => ({
-        label: parseISO(w.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
-        weight: w.weightKg,
-      })),
-    [weights, start] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  // Carry the most recent weigh-in from BEFORE the range forward to the range
+  // start, so a new month/period "starts from" the last logged weight even
+  // before a fresh entry exists (weights are stored ascending by date).
+  const weightSeries = useMemo(() => {
+    const startISO = toISO(start);
+    const fmt = (iso: string) =>
+      parseISO(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const within = weights.filter(w => inRange(w.date));
+    const series = within.map(w => ({ label: fmt(w.date), weight: w.weightKg }));
+    const prior = [...weights].reverse().find(w => w.date < startISO);
+    if (prior && !within.some(w => w.date === startISO)) {
+      series.unshift({ label: fmt(startISO), weight: prior.weightKg });
+    }
+    return series;
+  }, [weights, start, endISO]); // eslint-disable-line react-hooks/exhaustive-deps
   const avgWeight = weightSeries.length
     ? Math.round((weightSeries.reduce((s, w) => s + w.weight, 0) / weightSeries.length) * 10) / 10
     : null;
@@ -144,6 +165,7 @@ export default function MonthView() {
           className="text-sm text-ink bg-surface-2 rounded-lg pl-3 py-1.5 outline-none border border-line focus:border-primary"
         >
           <option value="month">This month</option>
+          <option value="lastMonth">Last month</option>
           <option value="3m">Last 3 months</option>
           <option value="6m">Last 6 months</option>
           <option value="year">This year</option>
@@ -154,13 +176,13 @@ export default function MonthView() {
       {/* Calorie trend */}
       <Card className="p-4">
         <div className="text-xs font-medium text-ink-muted mb-3">
-          {range === 'month' ? 'Daily calories' : 'Avg daily calories / month'}
+          {isDaily ? 'Daily calories' : 'Avg daily calories / month'}
         </div>
         <div className="h-44">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={trend} margin={{ top: 6, right: 4, left: -18, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#8F9870' }} axisLine={false} tickLine={false}
-                interval={range === 'month' ? 4 : 0} />
+                interval={isDaily ? 4 : 0} />
               <YAxis tick={{ fontSize: 10, fill: '#8F9870' }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={tooltipStyle} />
               <ReferenceLine y={targets.cal} stroke={COLORS.cal} strokeDasharray="4 4" />
